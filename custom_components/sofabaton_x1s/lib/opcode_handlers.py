@@ -1127,8 +1127,16 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
         dev_id = _extract_dev_id(raw, payload, effective_opcode)
 
         now = time.monotonic()
-        if proxy._burst.active and (proxy._burst.kind or "").startswith("commands:"):
-            proxy._burst.last_ts = now + proxy._burst.response_grace
+        burst_kind = proxy._burst.kind or ""
+        if proxy._burst.active and burst_kind.startswith("commands:"):
+            # For targeted command fetches (commands:<dev>:<cmd>) we already
+            # have the response frame, so do not hold the burst open for the
+            # normal response grace window. This lets the scheduler drain the
+            # next queued request much sooner.
+            if burst_kind.count(":") >= 2:
+                proxy._burst.last_ts = now
+            else:
+                proxy._burst.last_ts = now + proxy._burst.response_grace
         else:
             proxy._burst.start(f"commands:{dev_id}", now=now)
 

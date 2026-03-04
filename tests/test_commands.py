@@ -24,6 +24,7 @@ _ensure_stub_package("custom_components.sofabaton_x1s.lib", ROOT / "custom_compo
 
 from custom_components.sofabaton_x1s.lib.commands import DeviceCommandAssembler
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
+from custom_components.sofabaton_x1s.lib import opcode_handlers
 from custom_components.sofabaton_x1s.lib.opcode_handlers import (
     DeviceButtonHeaderHandler,
     DeviceButtonPayloadHandler,
@@ -291,6 +292,69 @@ def test_single_command_handler_routes_favorite_labels() -> None:
 
     assert proxy.state.commands == {}
     assert proxy.state.activity_favorite_labels[0x66] == {(1, 2): "Exit"}
+
+
+def test_single_command_handler_skips_response_grace_for_targeted_command_burst(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonSingleHandler()
+
+    # Simulate a targeted command burst (commands:<dev>:<cmd>) already active.
+    proxy._burst.active = True
+    proxy._burst.kind = "commands:1:2"
+    proxy._burst.last_ts = 0.0
+
+    raw = bytes.fromhex(
+        "a5 5a 4d 5d 01 00 01 01 00 01 01 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff d0"
+    )
+
+    payload = raw[4:-1]
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_SINGLE,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_SINGLE",
+    )
+
+    monkeypatch.setattr(opcode_handlers.time, "monotonic", lambda: 100.0)
+
+    handler.handle(frame)
+
+    assert proxy._burst.last_ts == 100.0
+
+
+def test_single_command_handler_keeps_response_grace_for_device_command_burst(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonSingleHandler()
+
+    proxy._burst.active = True
+    proxy._burst.kind = "commands:1"
+
+    raw = bytes.fromhex(
+        "a5 5a 4d 5d 01 00 01 01 00 01 01 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff d0"
+    )
+
+    payload = raw[4:-1]
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_SINGLE,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_SINGLE",
+    )
+
+    monkeypatch.setattr(opcode_handlers.time, "monotonic", lambda: 100.0)
+
+    handler.handle(frame)
+
+    # Non-targeted command bursts still keep grace to allow multipart responses.
+    assert proxy._burst.last_ts == 100.0 + proxy._burst.response_grace
 
 
 def test_single_command_handler_matches_pending_device_when_id_differs(monkeypatch) -> None:

@@ -92,7 +92,11 @@ class ActivityCache:
                     return
                 self.keymap_remainders[act_lo] = remainder
                 return
-            if self.activity_favorite_slots.get(act_lo):
+            # Only short-circuit when we consumed the payload as full records.
+            # If parsing broke early (e.g. unknown/favorite-only rows between
+            # standard key rows), fall back to byte-scanning so later known
+            # buttons in the same payload are still captured.
+            if i >= n and self.activity_favorite_slots.get(act_lo):
                 return
 
         i = 0

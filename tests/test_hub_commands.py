@@ -753,6 +753,77 @@ def test_sync_command_config_with_zero_slots_does_not_enable_wifi_device(monkeyp
     loop.close()
 
 
+def test_sync_command_config_refreshes_devices_before_managed_delete(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = False
+
+    # Local cache is stale and does not include the managed device.
+    hub.devices = {12: {"brand": "Other", "name": "Other Device"}}
+
+    # Fresh device burst includes a managed m3tac0de-* device that should be deleted.
+    snapshot = {
+        11: {"brand": "m3tac0de-newhash", "name": "Managed Device"},
+        12: {"brand": "Other", "name": "Other Device"},
+    }
+    ready = {"value": False}
+
+    monkeypatch.setattr(hub._proxy, "get_devices", lambda: (snapshot, ready["value"]))
+
+    request_calls = {"count": 0}
+
+    def _request_devices():
+        request_calls["count"] += 1
+        loop.call_later(
+            0.05,
+            lambda: (
+                ready.__setitem__("value", True),
+                hub._on_devices_burst("devices"),
+            ),
+        )
+        return True
+
+    monkeypatch.setattr(hub._proxy, "request_devices", _request_devices)
+
+    deleted: list[int] = []
+
+    async def _delete(dev_id, *_args, **_kwargs):
+        deleted.append(dev_id)
+        return {"status": "success"}
+
+    monkeypatch.setattr(hub, "async_delete_device", _delete)
+
+    payload = {
+        "commands": [],
+        "commands_hash": "abc",
+    }
+
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(command_payload=payload, request_port=8060)
+    )
+
+    assert request_calls["count"] == 1
+    assert deleted == [11]
+    assert result["deleted_managed_devices"] == 1
+
+    loop.close()
+
+
 def test_sync_command_config_enables_wifi_device_before_sync(monkeypatch):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

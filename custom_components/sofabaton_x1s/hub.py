@@ -101,6 +101,7 @@ class SofabatonHub:
         self.hub_connected: bool = False
         self.activities_ready: bool = False
         self.devices_ready: bool = False
+        self._devices_generation: int = 0
         self.proxy_enabled: bool = proxy_enabled
         self.hex_logging_enabled: bool = hex_logging_enabled
         self.roku_server_enabled: bool = roku_server_enabled
@@ -343,6 +344,7 @@ class SofabatonHub:
             self.devices_ready = ready
             if ready:
                 self.devices = devs
+                self._devices_generation += 1
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
 
@@ -425,6 +427,7 @@ class SofabatonHub:
         self.devices_ready = devs_ready
         if devs_ready:
             self.devices = devs
+            self._devices_generation += 1
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
 
         if acts_ready:
@@ -912,14 +915,32 @@ class SofabatonHub:
         self._command_sync_progress = next_payload
         async_dispatcher_send(self.hass, signal_command_sync(self.entry_id))
 
-    def _managed_wifi_devices(self) -> list[tuple[int, str]]:
+    def _managed_wifi_devices(
+        self, devices: dict[int, dict[str, Any]] | None = None
+    ) -> list[tuple[int, str]]:
         managed: list[tuple[int, str]] = []
         prefix = f"{COMMAND_BRAND_PREFIX}-"
-        for dev_id, device in self.devices.items():
+        for dev_id, device in (devices or self.devices).items():
             brand = str(device.get("brand") or "").strip()
             if brand.startswith(prefix):
                 managed.append((int(dev_id), brand))
         return managed
+
+    async def _async_refresh_devices_snapshot(
+        self, timeout_seconds: float = 2.0
+    ) -> dict[int, dict[str, Any]]:
+        """Request a fresh device burst and wait briefly for the local cache to update."""
+
+        previous_generation = self._devices_generation
+        await self.hass.async_add_executor_job(self._proxy.request_devices)
+
+        deadline = monotonic() + timeout_seconds
+        while monotonic() < deadline:
+            if self._devices_generation > previous_generation:
+                return dict(self.devices)
+            await asyncio.sleep(0.1)
+
+        return dict(self.devices)
 
     def get_managed_command_hashes(self) -> list[str]:
         prefix = f"{COMMAND_BRAND_PREFIX}-"
@@ -1011,7 +1032,7 @@ class SofabatonHub:
 
             self._set_command_sync_progress(
                 current_step=1,
-                message="Ensuring Wifi Device (Roku/HTTP Listener) is enabled",
+                message="Ensuring Wifi Device is enabled",
             )
             if configured_slots > 0 and not self.roku_server_enabled:
                 await self.async_set_roku_server_enabled(True)
@@ -1023,7 +1044,7 @@ class SofabatonHub:
                     self._set_command_sync_progress(
                         status="failed",
                         message=(
-                            "Failed enabling Wifi Device (Roku/HTTP Listener). "
+                            "Failed enabling Wifi Device. "
                             f"Port {request_port} may already be in use. "
                             f"Details: {listener_error}. See {WIFI_DEVICE_ENABLE_DOCS_URL}"
                         ),
@@ -1034,7 +1055,8 @@ class SofabatonHub:
                         f"See {WIFI_DEVICE_ENABLE_DOCS_URL}"
                     )
 
-            managed = self._managed_wifi_devices()
+            device_snapshot = await self._async_refresh_devices_snapshot()
+            managed = self._managed_wifi_devices(device_snapshot)
             self._set_command_sync_progress(
                 current_step=2,
                 message="Deleting existing managed Wifi Device(s)",

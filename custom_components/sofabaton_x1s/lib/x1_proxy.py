@@ -1547,7 +1547,7 @@ class X1Proxy:
         if not self.request_activity_mapping(act_lo):
             log.warning("[ACTIVITY_ASSIGN] failed to request activity map for act=0x%02X", act_lo)
             return None
-        if not self._wait_for_activity_map_burst(act_lo, timeout=15.0):
+        if not self._wait_for_activity_map_burst(act_lo, timeout=5.0):
             return None
 
         current_members = self.state.get_activity_members(act_lo)
@@ -1938,6 +1938,11 @@ class X1Proxy:
             "status": "success",
         }
 
+
+    def _cache_created_wifi_device(self, *, device_id: int, device_name: str, brand_name: str) -> None:
+        dev_lo = device_id & 0xFF
+        self.state.devices[dev_lo] = {"brand": brand_name, "name": device_name}
+
     def create_wifi_device(
         self,
         device_name: str = "Home Assistant",
@@ -2113,8 +2118,11 @@ class X1Proxy:
         ):
             return None
 
-        if not self.request_devices():
-            log.warning("[WIFI] failed to request device list refresh after create")
+        self._cache_created_wifi_device(
+            device_id=device_id,
+            device_name=device_name,
+            brand_name=brand_name,
+        )
 
         log.info("[WIFI] replayed Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}
@@ -2219,8 +2227,11 @@ class X1Proxy:
         ):
             return None
 
-        if not self.request_devices():
-            log.warning("[WIFI] failed to request device list refresh after create")
+        self._cache_created_wifi_device(
+            device_id=device_id,
+            device_name=device_name,
+            brand_name=brand_name,
+        )
 
         log.info("[WIFI] replayed virtual IP Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}

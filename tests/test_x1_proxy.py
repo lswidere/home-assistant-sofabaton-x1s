@@ -333,6 +333,7 @@ def test_create_wifi_device_replays_sequence(monkeypatch) -> None:
     result = proxy.create_wifi_device(commands=["Launch One"])
 
     assert result == {"device_id": 0x07, "status": "success"}
+    assert proxy.state.devices[0x07] == {"brand": "m3tac0de", "name": "Home Assistant"}
     assert sent
     # first frame is the create-device head family
     assert (sent[0][0] & 0xFF) == 0x07
@@ -368,6 +369,7 @@ def test_create_wifi_device_uses_custom_name_brand_and_ip(monkeypatch) -> None:
     result = proxy.create_wifi_device(device_name="Living Room Roku", commands=["My Cmd"])
 
     assert result == {"device_id": 0x07, "status": "success"}
+    assert proxy.state.devices[0x07] == {"brand": "m3tac0de", "name": "Living Room Roku"}
     create_payload = sent[0][1]
     finalize_payload = next(payload for opcode, payload in sent if (opcode & 0xFF) == 0x08)
 
@@ -423,6 +425,7 @@ def test_create_wifi_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
     result = proxy.create_wifi_device(device_name="Living Room Roku", commands=["My Cmd"], request_port=8765)
 
     assert result == {"device_id": 0x09, "status": "success"}
+    assert proxy.state.devices[0x09] == {"brand": "m3tac0de", "name": "Living Room Roku"}
     create_payload = sent[0][1]
     define_payload = next(payload for opcode, payload in sent if (opcode & 0xFF) == 0x0E)
     finalize_payload = next(payload for opcode, payload in sent if (opcode & 0xFF) == 0x08)
@@ -486,6 +489,7 @@ def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:
     result = proxy.create_wifi_device(commands=["Lights On", "Lights Off"])
 
     assert result == {"device_id": 0x07, "status": "success"}
+    assert proxy.state.devices[0x07] == {"brand": "m3tac0de", "name": "Home Assistant"}
     define_payloads = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x0E]
 
     assert len(define_payloads) == 2
@@ -530,6 +534,7 @@ def test_create_wifi_device_without_custom_commands_defines_no_slots(monkeypatch
     result = proxy.create_wifi_device()
 
     assert result == {"device_id": 0x07, "status": "success"}
+    assert proxy.state.devices[0x07] == {"brand": "m3tac0de", "name": "Home Assistant"}
     define_slots = [payload[0] for opcode, payload in sent if (opcode & 0xFF) == 0x0E]
     assert define_slots == []
 

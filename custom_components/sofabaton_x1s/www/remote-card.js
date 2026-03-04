@@ -3816,12 +3816,23 @@ class SofabatonRemoteCard extends HTMLElement {
     this._activitySelect = document.createElement("ha-select");
     this._activitySelect.label = "Activity";
 
+    let lastSelectedActivityValue = null;
+    let lastSelectedActivityAt = 0;
     const handleActivitySelect = (ev) => {
       if (this._editMode) return;
       if (this._suppressActivityChange) return;
       const value =
         ev?.detail?.value ?? ev?.target?.value ?? this._activitySelect.value;
       if (value != null) {
+        const now = Date.now();
+        if (
+          String(value) === lastSelectedActivityValue &&
+          now - lastSelectedActivityAt < 250
+        ) {
+          return;
+        }
+        lastSelectedActivityValue = String(value);
+        lastSelectedActivityAt = now;
         Promise.resolve(this._setActivity(value)).catch((err) => {
           // eslint-disable-next-line no-console
           console.error(

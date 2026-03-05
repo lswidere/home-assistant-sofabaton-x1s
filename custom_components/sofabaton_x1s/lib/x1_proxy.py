@@ -1192,12 +1192,23 @@ class X1Proxy:
             if marker_idx > 9:
                 break
 
-        if marker_idx <= 9:
-            return None
-
         head = bytearray(source_payload[:9])
-        records_blob = source_payload[9:marker_idx]
-        tail = source_payload[marker_idx:]
+
+        row_count_hint = head[8] if len(head) >= 9 else 0
+
+        if marker_idx > 9:
+            records_blob = source_payload[9:marker_idx]
+            tail = source_payload[marker_idx:]
+        else:
+            # Some hubs return macro payloads without an embedded POWER_ON/OFF
+            # label block (observed with 0xF013 responses during activity-assign).
+            # In that case, split by the advertised row count and keep the
+            # remainder as trailing metadata.
+            record_end = 9 + (row_count_hint * 10)
+            if row_count_hint == 0 or record_end > len(source_payload):
+                return None
+            records_blob = source_payload[9:record_end]
+            tail = source_payload[record_end:]
 
         compact_records: list[bytes] = []
 
@@ -1466,7 +1477,7 @@ class X1Proxy:
             family=0x09,
             payload=bytes([dev_lo]),
             ack_opcode=0x0103,
-            timeout=30.0,
+            timeout=120.0,
         ):
             return None
 

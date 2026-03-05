@@ -294,6 +294,33 @@ def test_single_command_handler_routes_favorite_labels() -> None:
     assert proxy.state.activity_favorite_labels[0x66] == {(1, 2): "Exit"}
 
 
+def test_single_command_handler_normalizes_x1s_0x1c_command_id() -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonSingleHandler()
+
+    proxy._favorite_label_requests[(8, 8)] = {0x66}
+
+    raw = bytes.fromhex(
+        "a5 5a 4d 5d 01 00 01 01 00 01 01 08 08 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e "
+        "00 64 00 20 00 38 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff f0"
+    )
+
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_SINGLE,
+        direction="H→A",
+        payload=raw[4:-1],
+        raw=raw,
+        name="DEVBTN_SINGLE",
+    )
+
+    handler.handle(frame)
+
+    assert 0x1C not in proxy.state.commands.get(8, {})
+    assert proxy.state.activity_favorite_labels[0x66] == {(8, 8): "Command 8"}
+
+
 def test_single_command_handler_skips_response_grace_for_targeted_command_burst(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1")
     handler = DeviceButtonSingleHandler()

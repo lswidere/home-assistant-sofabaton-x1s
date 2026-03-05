@@ -3004,12 +3004,29 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   async _ensureHaElements() {
+    const dropdownItemTag = this._selectItemTagName();
     // These must exist before we call setConfig() on them
     await Promise.all([
       customElements.whenDefined("hui-button-card"),
       customElements.whenDefined("ha-select"),
-      customElements.whenDefined("mwc-list-item").catch(() => {}), // optional
+      customElements.whenDefined(dropdownItemTag).catch(() => {}), // optional
     ]);
+  }
+
+  _selectItemTagName() {
+    return customElements.get("ha-dropdown-item")
+      ? "ha-dropdown-item"
+      : "mwc-list-item";
+  }
+
+  _selectOpenEvents() {
+    return customElements.get("ha-dropdown-item") ? ["wa-open"] : ["opened"];
+  }
+
+  _selectCloseEvents() {
+    return customElements.get("ha-dropdown-item")
+      ? ["wa-close"]
+      : ["closed"];
   }
 
   // ---------- Render ----------
@@ -3857,8 +3874,12 @@ class SofabatonRemoteCard extends HTMLElement {
       this._activityMenuOpen = false;
       this._syncLayering();
     };
-    this._activitySelect.addEventListener("opened", onMenuOpened, true);
-    this._activitySelect.addEventListener("closed", onMenuClosed, true);
+    this._selectOpenEvents().forEach((eventName) => {
+      this._activitySelect.addEventListener(eventName, onMenuOpened, true);
+    });
+    this._selectCloseEvents().forEach((eventName) => {
+      this._activitySelect.addEventListener(eventName, onMenuClosed, true);
+    });
     // Fallbacks: selection changes or blur should also drop the "open" flag.
     this._activitySelect.addEventListener("change", onMenuClosed, true);
     this._activitySelect.addEventListener("blur", onMenuClosed, true);
@@ -4504,7 +4525,7 @@ class SofabatonRemoteCard extends HTMLElement {
         this._activityOptionsSig = sig;
         this._activitySelect.innerHTML = "";
         for (const opt of options) {
-          const item = document.createElement("mwc-list-item");
+          const item = document.createElement(this._selectItemTagName());
           item.value = opt;
           item.textContent = opt;
           this._activitySelect.appendChild(item);
@@ -4804,6 +4825,18 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       .replace(/[^A-Za-z0-9 ]+/g, "")
       .slice(0, 20);
     return cleaned;
+  }
+
+  _selectItemTagName() {
+    return customElements.get("ha-dropdown-item")
+      ? "ha-dropdown-item"
+      : "mwc-list-item";
+  }
+
+  _selectCloseEvents() {
+    return customElements.get("ha-dropdown-item")
+      ? ["wa-close"]
+      : ["closed"];
   }
 
   set hass(hass) {
@@ -7189,7 +7222,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     layoutSelect.value = this._layoutSelectionKey();
     layoutSelect.innerHTML = "";
     selectionOptions.forEach((option) => {
-      const item = document.createElement("mwc-list-item");
+      const item = document.createElement(this._selectItemTagName());
       item.value = option.value;
       item.textContent = option.label;
       layoutSelect.appendChild(item);
@@ -7211,8 +7244,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     };
     layoutSelect.addEventListener("selected", handleLayoutSelect);
     layoutSelect.addEventListener("change", handleLayoutSelect);
-    layoutSelect.addEventListener("closed", (ev) => {
-      ev.stopPropagation();
+    this._selectCloseEvents().forEach((eventName) => {
+      layoutSelect.addEventListener(eventName, (ev) => {
+        ev.stopPropagation();
+      });
     });
 
     selectActions.appendChild(layoutSelect);

@@ -824,6 +824,12 @@ def test_sync_command_config_refreshes_devices_before_managed_delete(monkeypatch
     loop.close()
 
 
+
+def test_refresh_devices_snapshot_default_timeout_is_15_seconds():
+    assert (
+        SofabatonHub._async_refresh_devices_snapshot.__defaults__ == (15.0,)
+    )
+
 def test_sync_command_config_enables_wifi_device_before_sync(monkeypatch):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

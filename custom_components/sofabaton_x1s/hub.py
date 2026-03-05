@@ -927,7 +927,7 @@ class SofabatonHub:
         return managed
 
     async def _async_refresh_devices_snapshot(
-        self, timeout_seconds: float = 2.0
+        self, timeout_seconds: float = 15.0
     ) -> dict[int, dict[str, Any]]:
         """Request a fresh device burst and wait briefly for the local cache to update."""
 

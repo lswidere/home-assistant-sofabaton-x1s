@@ -1485,7 +1485,7 @@ class X1Proxy:
             log.warning("[DELETE] failed to refresh activities after deleting dev=0x%02X", dev_lo)
             return None
 
-        deadline = time.monotonic() + 5.0
+        deadline = time.monotonic() + 15.0
         while time.monotonic() < deadline:
             if self._burst.active and self._burst.kind == "activities":
                 break

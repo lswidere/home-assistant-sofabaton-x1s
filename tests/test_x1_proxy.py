@@ -1577,7 +1577,7 @@ def test_delete_device_uses_x1s_finalize_opcode_for_activity_confirmation(monkey
     assert len(sent[1][1]) == 214
     assert sent[1][1][173] == 0x00
 
-def test_delete_device_uses_30_second_delete_ack_timeout(monkeypatch) -> None:
+def test_delete_device_uses_120_second_delete_ack_timeout(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version=HUB_VERSION_X1)
 
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
@@ -1593,7 +1593,7 @@ def test_delete_device_uses_30_second_delete_ack_timeout(monkeypatch) -> None:
     monkeypatch.setattr(proxy, "request_activities", lambda: False)
 
     assert proxy.delete_device(0x04) is None
-    assert observed["timeout"] == 30.0
+    assert observed["timeout"] == 120.0
 def test_delete_device_requires_delete_ack(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 

@@ -3024,9 +3024,24 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   _selectCloseEvents() {
-    return customElements.get("ha-dropdown-item")
-      ? ["wa-close"]
-      : ["closed"];
+    return customElements.get("ha-dropdown-item") ? ["wa-close"] : ["closed"];
+  }
+
+  _setSelectValueCompat(selectEl, value, options = []) {
+    if (!selectEl) return;
+    const resolvedValue = String(value ?? "");
+    const useDropdownItems = Boolean(customElements.get("ha-dropdown-item"));
+    if (!useDropdownItems) {
+      selectEl.value = resolvedValue;
+      return;
+    }
+
+    const selectedOption = options.find(
+      (option) => String(option?.value ?? "") === resolvedValue,
+    );
+    selectEl.value = selectedOption
+      ? String(selectedOption.label ?? selectedOption.value ?? "")
+      : resolvedValue;
   }
 
   // ---------- Render ----------
@@ -4834,9 +4849,24 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   _selectCloseEvents() {
-    return customElements.get("ha-dropdown-item")
-      ? ["wa-close"]
-      : ["closed"];
+    return customElements.get("ha-dropdown-item") ? ["wa-close"] : ["closed"];
+  }
+
+  _setSelectValueCompat(selectEl, value, options = []) {
+    if (!selectEl) return;
+    const resolvedValue = String(value ?? "");
+    const useDropdownItems = Boolean(customElements.get("ha-dropdown-item"));
+    if (!useDropdownItems) {
+      selectEl.value = resolvedValue;
+      return;
+    }
+
+    const selectedOption = options.find(
+      (option) => String(option?.value ?? "") === resolvedValue,
+    );
+    selectEl.value = selectedOption
+      ? String(selectedOption.label ?? selectedOption.value ?? "")
+      : resolvedValue;
   }
 
   set hass(hass) {
@@ -6533,6 +6563,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         this._updateActiveCommandDraft({
           hard_button: mapped === "__none__" ? "" : mapped,
         });
+        if (Boolean(customElements.get("ha-dropdown-item"))) {
+          buttonSelector.value = mapped;
+        }
         this._commandSaveError = "";
       });
       buttonRow.appendChild(buttonLabel);
@@ -7219,7 +7252,11 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     layoutSelect.fixedMenuPosition = true;
     layoutSelect.label = "Layout";
     layoutSelect.hass = this._hass;
-    layoutSelect.value = this._layoutSelectionKey();
+    this._setSelectValueCompat(
+      layoutSelect,
+      this._layoutSelectionKey(),
+      selectionOptions,
+    );
     layoutSelect.innerHTML = "";
     selectionOptions.forEach((option) => {
       const item = document.createElement(this._selectItemTagName());

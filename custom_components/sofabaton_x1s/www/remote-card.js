@@ -4978,7 +4978,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           show_macros_button: "Macros Button",
           show_favorites_button: "Favorites Button",
           max_width: "Maximum Card Width (px)",
-          shrink: "Shrink (higher = smaller)",
           group_order: "Group Order",
         };
         return labels[schema.name] || schema.name;
@@ -5226,7 +5225,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         !!this._config.background_override,
       background_override: this._config.background_override ?? [255, 255, 255],
       max_width: this._config.max_width ?? 360,
-      shrink: this._config.shrink ?? 0,
       group_order: this._config.group_order ?? DEFAULT_GROUP_ORDER.slice(),
       show_automation_assist: this._config.show_automation_assist ?? false,
     };
@@ -7114,7 +7112,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       const labels = {
         theme: "Apply a theme to the card",
         max_width: "Maximum Card Width (px)",
-        shrink: "Shrink (higher = smaller)",
         use_background_override: "Customize background color",
         background_override: "Select Background Color",
       };
@@ -7133,17 +7130,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           },
         },
       },
-      {
-        name: "shrink",
-        selector: {
-          number: {
-            min: 0,
-            max: 80,
-            step: 1,
-            unit_of_measurement: "%",
-          },
-        },
-      },
       { name: "use_background_override", selector: { boolean: {} } },
       ...(showColorPicker
         ? [{ name: "background_override", selector: { color_rgb: {} } }]
@@ -7152,7 +7138,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     form.data = {
       theme: this._config.theme || "",
       max_width: this._config.max_width ?? 360,
-      shrink: this._config.shrink ?? 0,
       use_background_override:
         this._config.use_background_override ??
         !!this._config.background_override,

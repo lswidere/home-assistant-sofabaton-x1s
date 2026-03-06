@@ -1192,12 +1192,23 @@ class X1Proxy:
             if marker_idx > 9:
                 break
 
-        if marker_idx <= 9:
-            return None
-
         head = bytearray(source_payload[:9])
-        records_blob = source_payload[9:marker_idx]
-        tail = source_payload[marker_idx:]
+
+        row_count_hint = head[8] if len(head) >= 9 else 0
+
+        if marker_idx > 9:
+            records_blob = source_payload[9:marker_idx]
+            tail = source_payload[marker_idx:]
+        else:
+            # Some hubs return macro payloads without an embedded POWER_ON/OFF
+            # label block (observed with 0xF013 responses during activity-assign).
+            # In that case, split by the advertised row count and keep the
+            # remainder as trailing metadata.
+            record_end = 9 + (row_count_hint * 10)
+            if row_count_hint == 0 or record_end > len(source_payload):
+                return None
+            records_blob = source_payload[9:record_end]
+            tail = source_payload[record_end:]
 
         compact_records: list[bytes] = []
 
@@ -1466,7 +1477,7 @@ class X1Proxy:
             family=0x09,
             payload=bytes([dev_lo]),
             ack_opcode=0x0103,
-            timeout=30.0,
+            timeout=120.0,
         ):
             return None
 
@@ -1474,7 +1485,7 @@ class X1Proxy:
             log.warning("[DELETE] failed to refresh activities after deleting dev=0x%02X", dev_lo)
             return None
 
-        deadline = time.monotonic() + 5.0
+        deadline = time.monotonic() + 15.0
         while time.monotonic() < deadline:
             if self._burst.active and self._burst.kind == "activities":
                 break
@@ -1599,23 +1610,6 @@ class X1Proxy:
             log.info("[ACTIVITY_ASSIGN] fetch macro act=0x%02X button=%s", act_lo, macro_name)
             self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, macro_button]))
 
-            # POWER_ON follows an extra input-selection wizard step on the hub.
-            # Replay it to keep the save-state machine aligned with the app.
-            if macro_button == ButtonName.POWER_ON:
-                pre_payload = self.wait_for_macro_payload(act_lo, macro_button, timeout=5.0)
-                if pre_payload is None:
-                    log.warning(
-                        "[ACTIVITY_ASSIGN] missing pre-input macro payload act=0x%02X button=0x%02X",
-                        act_lo,
-                        macro_button,
-                    )
-                    return None
-                self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, b"\x01")
-                if not self.wait_for_activity_inputs_burst(timeout=5.0):
-                    log.warning("[ACTIVITY_ASSIGN] missing activity-inputs response act=0x%02X", act_lo)
-                    return None
-                self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, macro_button]))
-
             source_payload = self.wait_for_macro_payload(act_lo, macro_button, timeout=5.0)
             if source_payload is None:
                 log.warning(
@@ -1653,22 +1647,10 @@ class X1Proxy:
                 log.info("[ACTIVITY_ASSIGN] save macro payload %s", updated_payload.hex(" "))
 
             self._send_family_frame(0x12, updated_payload)
-            ack_candidates = [(0x0112, macro_button), (0x0112, 0x01)]
             macro_ack = self.wait_for_roku_ack_any(
-                ack_candidates,
+                [(0x0112, macro_button)],
                 timeout=5.0,
             )
-            if macro_ack is None and updated_payload != source_payload:
-                log.warning(
-                    "[ACTIVITY_ASSIGN] missing ACK after macro save act=0x%02X button=0x%02X; retrying source payload",
-                    act_lo,
-                    macro_button,
-                )
-                self._send_family_frame(0x12, source_payload)
-                macro_ack = self.wait_for_roku_ack_any(
-                    ack_candidates,
-                    timeout=5.0,
-                )
 
             if macro_ack is None:
                 log.warning(
@@ -1967,6 +1949,11 @@ class X1Proxy:
             "status": "success",
         }
 
+
+    def _cache_created_wifi_device(self, *, device_id: int, device_name: str, brand_name: str) -> None:
+        dev_lo = device_id & 0xFF
+        self.state.devices[dev_lo] = {"brand": brand_name, "name": device_name}
+
     def create_wifi_device(
         self,
         device_name: str = "Home Assistant",
@@ -2142,8 +2129,11 @@ class X1Proxy:
         ):
             return None
 
-        if not self.request_devices():
-            log.warning("[WIFI] failed to request device list refresh after create")
+        self._cache_created_wifi_device(
+            device_id=device_id,
+            device_name=device_name,
+            brand_name=brand_name,
+        )
 
         log.info("[WIFI] replayed Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}
@@ -2248,8 +2238,11 @@ class X1Proxy:
         ):
             return None
 
-        if not self.request_devices():
-            log.warning("[WIFI] failed to request device list refresh after create")
+        self._cache_created_wifi_device(
+            device_id=device_id,
+            device_name=device_name,
+            brand_name=brand_name,
+        )
 
         log.info("[WIFI] replayed virtual IP Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}

@@ -648,6 +648,7 @@ class CatalogDeviceHandler(BaseFrameHandler):
         brand_bytes_raw = raw[96 : 96 + 60]
         brand_label = brand_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
 
+
         if dev_id is not None:
             proxy.state.devices[dev_id & 0xFF] = {"brand": brand_label, "name": device_label}
             log.info(
@@ -1126,8 +1127,16 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
         dev_id = _extract_dev_id(raw, payload, effective_opcode)
 
         now = time.monotonic()
-        if proxy._burst.active and (proxy._burst.kind or "").startswith("commands:"):
-            proxy._burst.last_ts = now + proxy._burst.response_grace
+        burst_kind = proxy._burst.kind or ""
+        if proxy._burst.active and burst_kind.startswith("commands:"):
+            # For targeted command fetches (commands:<dev>:<cmd>) we already
+            # have the response frame, so do not hold the burst open for the
+            # normal response grace window. This lets the scheduler drain the
+            # next queued request much sooner.
+            if burst_kind.count(":") >= 2:
+                proxy._burst.last_ts = now
+            else:
+                proxy._burst.last_ts = now + proxy._burst.response_grace
         else:
             proxy._burst.start(f"commands:{dev_id}", now=now)
 
@@ -1136,6 +1145,24 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
         )
         for complete_dev_id, assembled_payload in completed:
             commands = proxy.parse_device_commands(assembled_payload, complete_dev_id)
+            if (
+                effective_opcode == OP_DEVBTN_SINGLE
+                and len(assembled_payload) >= 2
+                and len(commands) == 1
+            ):
+                expected_cmd_id = assembled_payload[1]
+                parsed_cmd_id = next(iter(commands))
+                # Some X1S single-command responses encode the command tuple as:
+                #   <dev> <cmd> 0x1C ...
+                # The generic parser can lock onto 0x1C as the command id when
+                # scanning candidates, which causes the requested favorite label
+                # to be associated with cmd 28 instead of the real command.
+                if (
+                    parsed_cmd_id == 0x1C
+                    and expected_cmd_id not in (0x00, 0xFC)
+                    and expected_cmd_id != parsed_cmd_id
+                ):
+                    commands = {expected_cmd_id: next(iter(commands.values()))}
             if commands:
                 dev_key = complete_dev_id & 0xFF
                 for cmd_id, label in commands.items():

@@ -35,6 +35,12 @@ HUB_VERSION_BY_HVER = {
     HVER_X2: HUB_VERSION_X2,
 }
 
+HVER_BY_HUB_VERSION = {
+    HUB_VERSION_X1: HVER_X1,
+    HUB_VERSION_X1S: HVER_X1S,
+    HUB_VERSION_X2: HVER_X2,
+}
+
 MDNS_SERVICE_TYPE_BY_VERSION = {
     HUB_VERSION_X1: MDNS_SERVICE_TYPE_X1,
     HUB_VERSION_X1S: MDNS_SERVICE_TYPE_X1,
@@ -46,7 +52,7 @@ DEFAULT_PROXY_UDP_PORT = 8102
 DEFAULT_HUB_LISTEN_BASE = 8200
 DEFAULT_ROKU_LISTEN_PORT = 8060
 WIFI_DEVICE_ENABLE_DOCS_URL = (
-    "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/networking.md"
+    "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md"
 )
 
 PLATFORMS = [

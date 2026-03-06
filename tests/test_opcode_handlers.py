@@ -40,6 +40,7 @@ from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib.opcode_handlers import (
     ActivityMapHandler,
     CatalogActivityHandler,
+    CatalogDeviceHandler,
     KeymapHandler,
     MacroHandler,
     X1CatalogActivityHandler,
@@ -63,6 +64,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_X2_REMOTE_LIST_ROW,
 )
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X1, HUB_VERSION_X1S
 
 
 def _build_context(proxy: X1Proxy, raw_hex: str, opcode: int, name: str) -> FrameContext:
@@ -912,3 +914,71 @@ def test_activity_map_ignores_control_tuples_from_x1_tail() -> None:
         handler.handle(frame)
 
     assert proxy.state.get_activity_command_refs(act) == set()
+
+
+def test_catalog_device_handler_keeps_mdns_hub_version() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version=HUB_VERSION_X1
+    )
+    handler = CatalogDeviceHandler()
+
+    payload = bytes([0x01, 0x00, 0x01, 0x06, 0x00, 0x01, 0x00, 0x06]) + (b"\x00" * 210)
+    frame = _build_payload_context(proxy, 0xD50B, payload, "CATALOG_ROW_DEVICE")
+    handler.handle(frame)
+
+    assert proxy.hub_version == HUB_VERSION_X1
+
+
+def test_x1_catalog_device_handler_keeps_mdns_hub_version() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version=HUB_VERSION_X1S
+    )
+    handler = X1CatalogDeviceHandler()
+
+    payload = bytes([0x01, 0x00, 0x01, 0x06, 0x00, 0x01, 0x00, 0x06]) + (b"\x00" * 80)
+    frame = _build_payload_context(proxy, OP_X1_DEVICE, payload, "X1_DEVICE")
+    handler.handle(frame)
+
+    assert proxy.hub_version == HUB_VERSION_X1S
+
+
+def test_keymap_handler_parses_x2_followup_d73d_page_buttons() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    frames = (
+        (
+            "a5 5a fa 3d 01 00 01 01 00 03 27 65 05 03 00 00 00 00 00 01 01 00 00 00 00 00 00 00 00 65 06 03 00 00 00 00 2f 24 1d 00 00 00 00 00 00 00 00 65 07 03 00 00 00 00 31 f6 1f 00 00 00 00 00 00 00 00 65 97 03 00 00 00 00 31 f6 1f 03 00 00 00 00 31 f6 1f 65 99 03 00 00 00 00 2f 24 1d 03 00 00 00 00 2f 24 1d 65 9a 01 00 00 00 00 07 c7 19 00 00 00 00 00 00 00 00 65 9c 01 00 00 00 00 00 92 01 00 00 00 00 00 00 00 00 65 9d 01 00 00 00 00 07 c7 19 00 00 00 00 00 00 00 00 65 9f 03 00 00 00 00 00 38 04 00 00 00 00 00 00 00 00 65 a0 03 00 00 00 00 04 28 11 00 00 00 00 00 00 00 00 65 a1 03 00 00 00 00 00 65 0d 00 00 00 00 00 00 00 00 65 a2 03 00 00 00 00 00 60 0c 00 00 00 00 00 00 00 00 65 a3 03 00 00 00 00 00 5b 0b 00 00 00 00 00 00 00 00 65 a4 03 00 00 00 00 00 56 89",
+            OP_KEYMAP_TBL_B,
+            "KEYMAP_TABLE_B",
+        ),
+        (
+            "a5 5a fa 3d 01 00 02 0a 00 00 00 00 00 00 00 00 65 a5 03 00 00 00 00 00 51 09 00 00 00 00 00 00 00 00 65 a6 03 00 00 00 00 00 4c 08 00 00 00 00 00 00 00 00 65 a7 03 00 00 00 00 00 47 07 00 00 00 00 00 00 00 00 65 a8 03 00 00 00 00 00 42 06 00 00 00 00 00 00 00 00 65 a9 03 00 00 00 00 00 3d 05 00 00 00 00 00 00 00 00 65 ae 01 00 00 00 00 01 13 20 00 00 00 00 00 00 00 00 65 af 01 00 00 00 00 03 28 1f 00 00 00 00 00 00 00 00 65 b0 01 00 00 00 00 00 2a 1e 00 00 00 00 00 00 00 00 65 b1 01 00 00 00 00 03 29 1d 00 00 00 00 00 00 00 00 65 b2 01 00 00 00 00 01 15 1c 00 00 00 00 00 00 00 00 65 b3 01 00 00 00 00 00 74 1b 00 00 00 00 00 00 00 00 65 b4 01 00 00 00 00 07 c7 19 00 00 00 00 00 00 00 00 65 b5 01 00 00 00 00 00 2d 18 00 00 00 00 00 00 00 00 65 b6 03 00 ea",
+            OP_KEYMAP_TBL_B,
+            "KEYMAP_TABLE_B",
+        ),
+        (
+            "a5 5a d7 3d 01 00 03 00 00 00 2e 77 42 03 00 00 00 00 2e 77 42 65 b7 01 00 00 00 00 2e 78 16 00 00 00 00 00 00 00 00 65 b8 03 00 00 00 00 00 6a 38 00 00 00 00 00 00 00 00 65 b9 03 00 00 00 00 00 33 41 00 00 00 00 00 00 00 00 65 ba 01 00 00 00 00 00 2c 13 00 00 00 00 00 00 00 00 65 bb 01 00 00 00 00 01 d2 12 00 00 00 00 00 00 00 00 65 bc 01 00 00 00 00 00 a6 02 00 00 00 00 00 00 00 00 65 bd 01 00 00 00 00 1b 46 11 00 00 00 00 00 00 00 00 65 be 03 00 00 00 00 2f 24 1d 03 00 00 00 00 2f 24 1d 65 bf 03 00 00 00 00 31 f6 1f 03 00 00 00 00 31 f6 1f 65 c0 01 00 00 00 00 00 f6 0e 00 00 00 00 00 00 00 00 65 c1 01 00 00 00 00 00 f1 0d 00 00 00 00 00 00 00 00 ea",
+            _opcode_from_raw(
+                "a5 5a d7 3d 01 00 03 00 00 00 2e 77 42 03 00 00 00 00 2e 77 42 65 b7 01 00 00 00 00 2e 78 16 00 00 00 00 00 00 00 00 65 b8 03 00 00 00 00 00 6a 38 00 00 00 00 00 00 00 00 65 b9 03 00 00 00 00 00 33 41 00 00 00 00 00 00 00 00 65 ba 01 00 00 00 00 00 2c 13 00 00 00 00 00 00 00 00 65 bb 01 00 00 00 00 01 d2 12 00 00 00 00 00 00 00 00 65 bc 01 00 00 00 00 00 a6 02 00 00 00 00 00 00 00 00 65 bd 01 00 00 00 00 1b 46 11 00 00 00 00 00 00 00 00 65 be 03 00 00 00 00 2f 24 1d 03 00 00 00 00 2f 24 1d 65 bf 03 00 00 00 00 31 f6 1f 03 00 00 00 00 31 f6 1f 65 c0 01 00 00 00 00 00 f6 0e 00 00 00 00 00 00 00 00 65 c1 01 00 00 00 00 00 f1 0d 00 00 00 00 00 00 00 00 ea"
+            ),
+            "KEYMAP_TABLE_X2",
+        ),
+    )
+
+    for raw_hex, opcode, name in frames:
+        handler.handle(_build_context(proxy, raw_hex, opcode, name))
+
+    expected = {
+        ButtonName.UP,
+        ButtonName.DOWN,
+        ButtonName.LEFT,
+        ButtonName.RIGHT,
+        ButtonName.HOME,
+        ButtonName.BACK,
+        ButtonName.MENU,
+        ButtonName.VOL_UP,
+    }
+    assert expected.issubset(proxy.state.buttons.get(0x65, set()))

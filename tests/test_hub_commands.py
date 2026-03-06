@@ -2,7 +2,8 @@ import asyncio
 import pytest
 from types import SimpleNamespace
 
-from custom_components.sofabaton_x1s.hub import SofabatonHub
+from custom_components.sofabaton_x1s.hub import SofabatonHub, get_hub_model
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S
 
 
 class FakeHass:
@@ -752,6 +753,83 @@ def test_sync_command_config_with_zero_slots_does_not_enable_wifi_device(monkeyp
     loop.close()
 
 
+def test_sync_command_config_refreshes_devices_before_managed_delete(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = False
+
+    # Local cache is stale and does not include the managed device.
+    hub.devices = {12: {"brand": "Other", "name": "Other Device"}}
+
+    # Fresh device burst includes a managed m3tac0de-* device that should be deleted.
+    snapshot = {
+        11: {"brand": "m3tac0de-newhash", "name": "Managed Device"},
+        12: {"brand": "Other", "name": "Other Device"},
+    }
+    ready = {"value": False}
+
+    monkeypatch.setattr(hub._proxy, "get_devices", lambda: (snapshot, ready["value"]))
+
+    request_calls = {"count": 0}
+
+    def _request_devices():
+        request_calls["count"] += 1
+        loop.call_later(
+            0.05,
+            lambda: (
+                ready.__setitem__("value", True),
+                hub._on_devices_burst("devices"),
+            ),
+        )
+        return True
+
+    monkeypatch.setattr(hub._proxy, "request_devices", _request_devices)
+
+    deleted: list[int] = []
+
+    async def _delete(dev_id, *_args, **_kwargs):
+        deleted.append(dev_id)
+        return {"status": "success"}
+
+    monkeypatch.setattr(hub, "async_delete_device", _delete)
+
+    payload = {
+        "commands": [],
+        "commands_hash": "abc",
+    }
+
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(command_payload=payload, request_port=8060)
+    )
+
+    assert request_calls["count"] == 1
+    assert deleted == [11]
+    assert result["deleted_managed_devices"] == 1
+
+    loop.close()
+
+
+
+def test_refresh_devices_snapshot_default_timeout_is_15_seconds():
+    assert (
+        SofabatonHub._async_refresh_devices_snapshot.__defaults__ == (15.0,)
+    )
+
 def test_sync_command_config_enables_wifi_device_before_sync(monkeypatch):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -885,6 +963,117 @@ def test_sync_command_config_reports_wifi_listener_enable_failure(monkeypatch):
     progress = hub.get_command_sync_progress()
     assert progress["status"] == "failed"
     assert "Port 8060 may already be in use" in progress["message"]
-    assert "docs/networking.md" in progress["message"]
+    assert "docs/wifi_commands.md" in progress["message"]
+
+    loop.close()
+
+
+def test_hub_create_proxy_uses_explicit_hub_version() -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+        version=HUB_VERSION_X1S,
+    )
+
+    assert hub._proxy.hub_version == HUB_VERSION_X1S
+
+    loop.close()
+
+
+def test_get_hub_model_prefers_mdns_hver_over_stale_version() -> None:
+    entry = SimpleNamespace(
+        data={"mdns_txt": {"HVER": "2"}, "mdns_version": "X1"},
+        options={"mdns_version": "X1"},
+    )
+
+    assert get_hub_model(entry) == "X1S"
+
+
+def test_on_devices_burst_does_not_override_mdns_hub_version() -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hub = SofabatonHub(
+        FakeHass(loop),
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+        version="X1",
+    )
+
+    hub._proxy.hub_version = "X1S"
+    hub._proxy.get_devices = lambda: ({1: {"name": "TV", "brand": "Sony"}}, True)
+
+    hub._on_devices_burst("devices")
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert hub.version == "X1"
+
+    loop.close()
+
+
+def test_async_set_hub_version_persists_hver_and_updates_proxy() -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    entry = SimpleNamespace(
+        entry_id="entry-id",
+        title="Old title",
+        data={"host": "127.0.0.1", "mac": "aa:bb:cc", "mdns_txt": {}, "mdns_version": "X1"},
+        options={"mdns_version": "X1"},
+    )
+    updates: list[dict] = []
+
+    class HassWithEntries(FakeHass):
+        def __init__(self, l):
+            super().__init__(l)
+            self.config_entries = SimpleNamespace(
+                async_get_entry=lambda _entry_id: entry,
+                async_update_entry=lambda _entry, **kwargs: updates.append(kwargs),
+            )
+
+    hass = HassWithEntries(loop)
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+        version="X1",
+    )
+
+    loop.run_until_complete(hub.async_set_hub_version("X1S"))
+
+    assert hub.version == "X1S"
+    assert hub._proxy.hub_version == "X1S"
+    assert hub._proxy.mdns_txt["HVER"] == "2"
+    assert updates
+    update = updates[-1]
+    assert update["data"]["mdns_txt"]["HVER"] == "2"
+    assert update["data"]["mdns_version"] == "X1S"
+    assert update["options"]["mdns_version"] == "X1S"
 
     loop.close()

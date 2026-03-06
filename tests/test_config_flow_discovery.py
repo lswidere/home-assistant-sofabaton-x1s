@@ -124,6 +124,7 @@ def test_manual_flow_persists_selected_hub_version() -> None:
     assert result["type"] == "create_entry"
     assert result["data"][CONF_MDNS_VERSION] == HUB_VERSION_X2
     assert result["options"][CONF_MDNS_VERSION] == HUB_VERSION_X2
+    assert result["data"]["mdns_txt"]["HVER"] == "3"
 
 
 def test_zeroconf_x2_aborts_when_disabled() -> None:
@@ -164,6 +165,7 @@ def test_zeroconf_x2_prompts_when_enabled() -> None:
 
     assert result["type"] == "form"
     assert result["step_id"] == "zeroconf_confirm"
+
 
 
 def test_manual_flow_formats_entry_title_with_version_host_and_mac() -> None:
